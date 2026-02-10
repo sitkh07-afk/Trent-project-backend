@@ -1,0 +1,16 @@
+[Unit]
+Description=Trent Power - Paris Event Curation
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/trent-power
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+Environment=PORT=3000
+EnvironmentFile=/opt/trent-power/.env
+
+[Install]
+WantedBy=multi-user.target
