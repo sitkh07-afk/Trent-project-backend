@@ -1,5 +1,3 @@
-node_modules
-dist
-.vercel
 .env
-.env.local
+node_modules/
+*.log
