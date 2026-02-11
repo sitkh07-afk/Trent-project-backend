@@ -8,6 +8,6 @@ RUN npm install
 
 COPY . .
 
-EXPOSE 3000 # Make sure server.js listens on process.env.PORT or 3000
+EXPOSE 3000
 
 CMD [ "npm", "start" ]
