@@ -1,13 +1,13 @@
-FROM node:20-slim
+FROM node:16
 
-WORKDIR /app
+WORKDIR /usr/src/app
 
-COPY package.json ./
+COPY package*.json ./
+
 RUN npm install
 
 COPY . .
-RUN npm run build
 
-EXPOSE 3000
+EXPOSE 3000 # Make sure server.js listens on process.env.PORT or 3000
 
-CMD ["node", "server.js"]
+CMD [ "npm", "start" ]
