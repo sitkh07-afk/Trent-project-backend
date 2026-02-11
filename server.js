@@ -1,47 +1,18 @@
-// ⚡ TRENT POWER — standalone server
-// Serves the built frontend + proxies Anthropic API calls
+// ⚡ TRENT POWER — backend API server
+// Proxies Anthropic API calls for event search
 // Run: node server.js
-// Requires: ANTHROPIC_API_KEY in .env or environment
+// Requires: ANTHROPIC_API_KEY in environment
 
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
-import { join, extname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const DIST = join(__dirname, 'dist');
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 
 if (!API_KEY) {
   console.error('\n⚡ ANTHROPIC_API_KEY not set.');
-  console.error('  Option 1: Create a .env file with ANTHROPIC_API_KEY=sk-ant-xxxxx');
-  console.error('  Option 2: ANTHROPIC_API_KEY=sk-ant-xxxxx node server.js\n');
+  console.error('  Set it in Render environment variables dashboard.\n');
   process.exit(1);
 }
-
-// Load .env file if present
-try {
-  const envFile = await readFile(join(__dirname, '.env'), 'utf8');
-  envFile.split('\n').forEach(line => {
-    const [key, ...val] = line.split('=');
-    if (key && val.length && !process.env[key.trim()]) {
-      process.env[key.trim()] = val.join('=').trim();
-    }
-  });
-} catch {}
-
-const MIME = {
-  '.html': 'text/html',
-  '.js': 'application/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-};
 
 const SYSTEM_PROMPT = `You are a Paris events data extractor. Search for REAL events happening THIS WEEK in Paris. Focus on: live music (rock, indie, post-punk, blues, electro), art exhibitions, cinema screenings, DJ nights. Prioritize venues in and near the 20th arrondissement (Belleville, Ménilmontant, Oberkampf, Jourdain).
 
@@ -80,12 +51,18 @@ async function handleSearch(req, res) {
   try {
     query = JSON.parse(body).query;
   } catch {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.writeHead(400, { 
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    });
     return res.end(JSON.stringify({ error: 'invalid JSON body' }));
   }
 
   if (!query) {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.writeHead(400, { 
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    });
     return res.end(JSON.stringify({ error: 'query required' }));
   }
 
@@ -96,7 +73,7 @@ async function handleSearch(req, res) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY || API_KEY,
+        'x-api-key': API_KEY,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
@@ -111,7 +88,10 @@ async function handleSearch(req, res) {
     if (!apiResp.ok) {
       const err = await apiResp.text();
       console.error(`  ❌ API error: ${apiResp.status}`);
-      res.writeHead(apiResp.status, { 'Content-Type': 'application/json' });
+      res.writeHead(apiResp.status, { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      });
       return res.end(JSON.stringify({ error: err }));
     }
 
@@ -123,65 +103,72 @@ async function handleSearch(req, res) {
 
     if (startIdx === -1 || endIdx === -1) {
       console.log('  ⚠ no JSON array in response');
-      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.writeHead(200, { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      });
       return res.end(JSON.stringify({ events: [] }));
     }
 
     const events = JSON.parse(cleaned.slice(startIdx, endIdx + 1));
     console.log(`  ✅ found ${events.length} events`);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.writeHead(200, { 
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    });
     return res.end(JSON.stringify({ events }));
   } catch (e) {
     console.error(`  ❌ error: ${e.message}`);
-    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.writeHead(500, { 
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    });
     return res.end(JSON.stringify({ error: e.message }));
   }
 }
 
-async function serveStatic(req, res) {
-  let filePath = join(DIST, req.url === '/' ? 'index.html' : req.url);
-
-  try {
-    const s = await stat(filePath);
-    if (s.isDirectory()) filePath = join(filePath, 'index.html');
-  } catch {
-    // SPA fallback — serve index.html for any unmatched route
-    filePath = join(DIST, 'index.html');
-  }
-
-  try {
-    const data = await readFile(filePath);
-    const ext = extname(filePath);
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
-    res.end(data);
-  } catch {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('not found');
-  }
-}
-
 const server = createServer(async (req, res) => {
-  // CORS headers
+  // CORS headers - allow requests from any origin
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
+  // Handle preflight
   if (req.method === 'OPTIONS') {
     res.writeHead(200);
     return res.end();
   }
+
+  console.log(`${req.method} ${req.url}`);
 
   // API route
   if (req.url === '/api/search' && req.method === 'POST') {
     return handleSearch(req, res);
   }
 
-  // Static files
-  return serveStatic(req, res);
+  // Health check
+  if (req.url === '/' || req.url === '/health') {
+    res.writeHead(200, { 
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    });
+    return res.end(JSON.stringify({ 
+      status: 'ok', 
+      service: 'trent-power-backend',
+      endpoints: ['/api/search']
+    }));
+  }
+
+  // 404 for everything else
+  res.writeHead(404, { 
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*'
+  });
+  res.end(JSON.stringify({ error: 'not found' }));
 });
 
 server.listen(PORT, () => {
-  console.log(`\n⚡ TRENT POWER running on http://localhost:${PORT}`);
+  console.log(`\n⚡ TRENT POWER BACKEND running on port ${PORT}`);
   console.log(`  API key: ${API_KEY.slice(0, 12)}...`);
-  console.log(`  Serving from: ${DIST}\n`);
+  console.log(`  Endpoints: /api/search, /health\n`);
 });
